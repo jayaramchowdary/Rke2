@@ -1,0 +1,14 @@
+ansible
+jinja2
+cryptography
+pyyaml==5.3
+six
+requests
+docker
+paramiko
+netaddr
+psutil
+kubernetes
+docker-compose
+pycrypto
+

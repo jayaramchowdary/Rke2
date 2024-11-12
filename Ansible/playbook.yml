@@ -1,0 +1,48 @@
+---
+- name: Install, configure RKE2 Kubernetes Cluster, and set up Python virtual environment
+  hosts: all
+  gather_facts: yes
+  become: yes
+
+  pre_tasks:
+    # Update apt cache to ensure latest packages are available
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    # Install Python 3, venv, pip
+    - name: Install Python 3, venv, and pip
+      apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - python3-dev
+          - build-essential
+          - libyaml-dev
+        state: present
+
+    # Create virtual environment
+    - name: Create virtual environment
+      command:
+        cmd: python3 -m venv /home/mybizz-admin/venv
+        creates: /home/mybizz-admin/venv
+
+    # Copy the requirements.txt file to the remote hosts
+    - name: Copy requirements.txt to remote hosts
+      copy:
+        src: requirements.txt
+        dest: /home/mybizz-admin/requirements.txt
+        mode: '0644'
+
+    # Install required Python modules inside the virtual environment
+    - name: Install required Python modules inside the virtual environment
+      pip:
+        requirements: /home/mybizz-admin/requirements.txt
+        virtualenv: /home/mybizz-admin/venv
+
+  roles:
+    - rke2_cluster
+
+  tags: rke2
+

@@ -1,0 +1,137 @@
+---
+- name: Install RKE2 Server on Master Node
+  when: "'server' in group_names"
+  shell: curl -sfL https://get.rke2.io | sh -
+  tags: rke2
+  become: yes
+
+- name: Enable RKE2 Server Service on Master Node
+  when: "'server' in group_names"
+  systemd:
+    name: rke2-server.service
+    enabled: yes
+  tags: rke2
+  become: yes
+
+- name: Start RKE2 Server Service on Master Node
+  when: "'server' in group_names"
+  systemd:
+    name: rke2-server.service
+    state: started
+  tags: rke2
+  become: yes
+
+- name: Check RKE2 Server Service Status on Master Node
+  when: "'server' in group_names"
+  systemd:
+    name: rke2-server.service
+    state: started
+  register: server_status
+  failed_when: server_status.status.ActiveState != 'active'
+  tags: rke2
+  become: yes
+
+- name: Wait for kubeconfig file to be created on Master Node
+  when: "'server' in group_names"
+  wait_for:
+    path: /etc/rancher/rke2/rke2.yaml
+    state: present
+    timeout: 60
+  tags: rke2
+  become: yes
+
+- name: Fetch server node token on Master Node
+  when: "'server' in group_names"
+  slurp:
+    src: /var/lib/rancher/rke2/server/node-token
+  register: server_token
+  tags: rke2
+  become: yes
+
+- name: Set server token fact
+  when: "'server' in group_names"
+  set_fact:
+    rke2_token: "{{ server_token['content'] | b64decode }}"
+  tags: rke2
+
+
+- name: Create config.yaml for RKE2 Agent
+  when: "'agents' in group_names"
+  blockinfile:
+    path: "/etc/rancher/rke2/config.yaml"
+    create: yes
+    block: |
+      server: "https://{{ hostvars['master-node'].ansible_host }}:9345"
+      token: "{{ hostvars['master-node'].rke2_token }}"
+  tags: rke2
+  become: yes
+
+
+- name: Install RKE2 Agent on Worker Nodes
+  when: "'agents' in group_names"
+  shell: curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
+  tags: rke2
+  become: yes
+
+- name: Enable RKE2 Agent Service on Worker Nodes
+  when: "'agents' in group_names"
+  systemd:
+    name: rke2-agent.service
+    enabled: yes
+  tags: rke2
+  become: yes
+
+- name: Ensure RKE2 Agent Configuration Directory Exists
+  when: "'agents' in group_names"
+  file:
+    path: /etc/rancher/rke2/
+    state: directory
+  tags: rke2
+  become: yes
+
+- name: Start RKE2 Agent Service on Worker Nodes
+  when: "'agents' in group_names"
+  systemd:
+    name: rke2-agent.service
+    state: started
+  tags: rke2
+  become: yes
+
+- name: Check RKE2 Agent Service Status on Worker Nodes
+  when: "'agents' in group_names"
+  systemd:
+    name: rke2-agent.service
+    state: started
+  register: agent_status
+  failed_when: agent_status.status.ActiveState != 'active'
+  tags: rke2
+  become: yes
+
+#  need to check with the error 
+- name: Add KUBECONFIG to .bashrc
+  lineinfile:
+    dest: "{{ ansible_env.HOME }}/.bashrc"
+    line: "export KUBECONFIG=/etc/rancher/rke2/rke2.yaml"
+    create: yes
+  when: "'server' in group_names"
+  become: yes
+
+#  need to check with the error:
+- name: Source .bashrc to apply changes
+  shell: source ~/.bashrc
+  args:
+    executable: /bin/bash
+  when: "'server' in group_names"
+  tags: rke2,check
+  become: yes
+
+- name: Verify Agent Node Connectivity to Server
+  when: "'agents' in group_names"
+  shell: "curl -k -f https://{{ hostvars['master-node'].ansible_host }}:9345 || true"
+  register: agent_connectivity
+  until: agent_connectivity.rc == 0
+  retries: 5
+  delay: 15  # Retry every 15 seconds
+  tags: rke2,check
+  become: yes
+
